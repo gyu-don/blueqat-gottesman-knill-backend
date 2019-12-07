@@ -143,25 +143,42 @@ class GottesmanKnillBackend(Backend):
 
     @staticmethod
     def _meas_all_comm(idx, stabilizers):
-        print(idx, stabilizers)
         n_qubits = len(stabilizers)
-        op_meas = GottesmanKnillBackend._make_z_stabilizer(idx, n_qubits).pauli
-        op = op_meas
-        for cur in range(n_qubits):
+        op = GottesmanKnillBackend._make_z_stabilizer(idx, n_qubits).pauli
+        mul = GottesmanKnillBackend._mult_pauli
+
+        def check(sts):
             try:
-                idx = [st.pauli for st in stabilizers[cur:]].index(op) + cur
-                break
+                idx = [st.pauli for st in sts].index(op)
             except ValueError:
-                nextop = GottesmanKnillBackend._mult_pauli(stabilizers[cur].pauli, op)
-                stabilizers[cur].pauli = op
-                op = nextop
-        else:
+                return None
+            return sts[idx]
+
+        def trans(sts, xs):
+            if xs:
+                for st in xs[1:]:
+                    st.pauli = mul(st.pauli, xs[0].pauli)
+                sts.remove(xs[0])
+
+        chk = check(stabilizers)
+        if chk:
+            return chk.sign == -1
+
+        sts = stabilizers[:]
+        for i in range(n_qubits):
+            if i == idx:
+                continue
+            xs = [st for st in sts if st.pauli[i] == 'X']
+            trans(sts, xs)
+            ys = [st for st in sts if st.pauli[i] == 'Y']
+            trans(sts, ys)
+            zs = [st for st in sts if st.pauli[i] == 'Z']
+            trans(sts, zs)
+        # Now, sts is I..IZI..I shaped.
+        chk = check(sts)
+        if not chk:
             raise ValueError(f'Backend is buggy. idx: {idx}, stabilizers: {stabilizers}')
-        sign = stabilizers[idx].sign
-        if sign == -1:
-            for i in range(cur):
-                stabilizers[i].sign *= -1
-        return stabilizers[[st.pauli for st in stabilizers].index(op_meas)].sign == -1
+        return chk.sign == -1
 
     @staticmethod
     def _meas_partial_noncomm(idx, noncomms):
