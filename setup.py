@@ -8,7 +8,7 @@ with open("requirements.txt", "r", encoding="utf-8") as f:
 
 setuptools.setup(
     name="blueqat_gk_backend",
-    version="0.0.1",
+    version="0.0.3",
     author="gyu-don",
     author_email="takumi.kt+blueqat@gmail.com",
     description="Blueqat backend",

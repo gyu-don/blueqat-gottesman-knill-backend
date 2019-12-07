@@ -124,8 +124,8 @@ class GottesmanKnillBackend(Backend):
     gate_y = _single_qubit_gate
     gate_z = _single_qubit_gate
     gate_h = _single_qubit_gate
-    gate_t = _single_qubit_gate
-    gate_tdg = _single_qubit_gate
+    gate_s = _single_qubit_gate
+    gate_sdg = _single_qubit_gate
 
     def gate_cx(self, gate, ctx):
         sts = ctx.stabilizers
