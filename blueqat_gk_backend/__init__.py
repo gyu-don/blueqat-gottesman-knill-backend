@@ -7,6 +7,7 @@
 
 from collections import Counter
 from dataclasses import dataclass
+from enum import Enum
 import random
 from typing import List, Tuple
 import numpy as np
@@ -71,14 +72,19 @@ gk_mult_dict = {
 }
 
 @dataclass
-class _Stabilizer:
+class Stabilizer:
     pauli: List[str]
     sign: int
 
+class _GKReturnType(Enum):
+    SHOTS = 'shots'
+    STABILIZERS = 'stabilizers'
+
 @dataclass
 class _GottesmanKnillBackendContext:
-    stabilizers: List[_Stabilizer]
+    stabilizers: List[Stabilizer]
     measured: List[bool]
+    returns: _GKReturnType
 
 class GottesmanKnillBackend(Backend):
     """Backend by Gottesman-Knill Theorem
@@ -93,22 +99,45 @@ class GottesmanKnillBackend(Backend):
         s.append('Z')
         for _ in range(n_qubits - n - 1):
             s.append('I')
-        return _Stabilizer(s, 1)
+        return Stabilizer(s, 1)
 
     def _preprocess_run(self, gates, n_qubits, args, kwargs):
         stabilizers = [self._make_z_stabilizer(i, n_qubits) for i in range(n_qubits)]
-        return gates, _GottesmanKnillBackendContext(stabilizers, [False] * n_qubits)
+        rettype = kwargs['returns']
+        return gates, _GottesmanKnillBackendContext(stabilizers, [False] * n_qubits, rettype)
 
     def _postprocess_run(self, ctx):
-        return ''.join('1' if b else '0' for b in ctx.measured)
+        if ctx.returns == _GKReturnType.SHOTS:
+            return ''.join('1' if b else '0' for b in ctx.measured)
+        return ctx.stabilizers
 
     def run(self, gates, n_qubits, *args, **kwargs):
-        shots = kwargs.get('shots', 100)
+        returns = kwargs.get('returns', 'shots')
+
+        if returns == 'shots':
+            rettype = _GKReturnType.SHOTS
+            shots = kwargs.get('shots', 100)
+        elif returns == 'stabilizers':
+            rettype = _GKReturnType.STABILIZERS
+            shots = kwargs.get('shots', 1)
+        else:
+            raise ValueError('Unknown return type.')
+        kwargs['returns'] = rettype
+
         counter = Counter()
-        for i in range(shots):
+        stabilizers = []
+        for _ in range(shots):
             result = self._run(gates, n_qubits, args, kwargs)
-            counter[result] += 1
-        return counter
+            if rettype == _GKReturnType.SHOTS:
+                counter[result] += 1
+            else:
+                stabilizers.append(result)
+
+        if rettype == _GKReturnType.SHOTS:
+            return counter
+        else:
+            return stabilizers
+
 
     def _single_qubit_gate(self, gate, ctx):
         sts = ctx.stabilizers
@@ -158,6 +187,7 @@ class GottesmanKnillBackend(Backend):
             if xs:
                 for st in xs[1:]:
                     st.pauli = mul(st.pauli, xs[0].pauli)
+                    st.sign *= xs[0].sign
                 sts.remove(xs[0])
 
         chk = check(stabilizers)
@@ -183,8 +213,9 @@ class GottesmanKnillBackend(Backend):
     @staticmethod
     def _meas_partial_noncomm(idx, noncomms):
         n_qubits = len(noncomms[0].pauli)
+        mul = GottesmanKnillBackend._mult_pauli
         for st in noncomms[1:]:
-            st.pauli[idx] = gk_mult_z[st.pauli[idx]]
+            st.pauli = mul(st.pauli, noncomms[0].pauli)
         noncomms[0].pauli = GottesmanKnillBackend._make_z_stabilizer(idx, n_qubits).pauli
         r = random.random()
         if r < 0.5:
