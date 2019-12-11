@@ -36,39 +36,31 @@ gk_table = {
         ('sdg', 'Z'): ('Z', +1),
 }
 
-gk_mult_x = {
-        'I': 'X',
-        'X': 'I',
-        'Y': 'Z',
-        'Z': 'Y',
-}
-
-gk_mult_y = {
-        'I': 'Y',
-        'X': 'Z',
-        'Y': 'I',
-        'Z': 'X',
-}
-
-gk_mult_z = {
-        'I': 'Z',
-        'X': 'Y',
-        'Y': 'X',
-        'Z': 'I',
-}
-
-gk_mult_i = {
-        'I': 'I',
-        'X': 'X',
-        'Y': 'Y',
-        'Z': 'Z',
-}
-
-gk_mult_dict = {
-        'I': gk_mult_i,
-        'X': gk_mult_x,
-        'Y': gk_mult_y,
-        'Z': gk_mult_z,
+_mul = {
+    'I': {
+        'I': ('I', 0),
+        'X': ('X', 0),
+        'Y': ('Y', 0),
+        'Z': ('Z', 0),
+    },
+    'X': {
+        'I': ('X', 0),
+        'X': ('I', 0),
+        'Y': ('Z', -1),
+        'Z': ('Y', +1),
+    },
+    'Y': {
+        'I': ('Y', 0),
+        'X': ('Z', +1),
+        'Y': ('I', 0),
+        'Z': ('X', -1),
+    },
+    'Z': {
+        'I': ('Z', 0),
+        'X': ('Y', -1),
+        'Y': ('X', +1),
+        'Z': ('I', 0),
+    },
 }
 
 @dataclass
@@ -76,15 +68,35 @@ class Stabilizer:
     pauli: List[str]
     sign: int
 
+    def __mul_pauli_and_phase(self, other):
+        pauli = [_mul[lc][rc][0] for lc, rc in zip(self, other)]
+        sign = self.sign * other.sign
+        phase = sum(_mul[lc][rc][1] for lc, rc in zip(self, other))
+        assert phase in (-2, 0, 2)
+        if phase != 0:
+            sign = -sign
+        return pauli, sign
+
+    def __mul__(self, other: 'Stabilizer') -> 'Stabilizer':
+        return Stabilizer(*self.__mul_pauli_and_phase(other))
+
+    def __imul__(self, other: 'Stabilizer'):
+        pauli, sign = self.__mul_pauli_and_phase(other)
+        self.pauli = pauli
+        self.sign = sign
+
+
 class _GKReturnType(Enum):
     SHOTS = 'shots'
     STABILIZERS = 'stabilizers'
+
 
 @dataclass
 class _GottesmanKnillBackendContext:
     stabilizers: List[Stabilizer]
     measured: List[bool]
     returns: _GKReturnType
+
 
 class GottesmanKnillBackend(Backend):
     """Backend by Gottesman-Knill Theorem
@@ -160,21 +172,30 @@ class GottesmanKnillBackend(Backend):
         sts = ctx.stabilizers
         for (c, t) in gate.control_target_iter(len(sts)):
             for st in sts:
-                if st.pauli[c] in 'XY':
-                    st.pauli[t] = gk_mult_x[st.pauli[t]]
-                if st.pauli[t] in 'YZ':
-                    st.pauli[c] = gk_mult_z[st.pauli[c]]
+                phase = 0
+                cpauli = st.pauli[c]
+                tpauli = st.pauli[t]
+                print('CX before', st)
+                if cpauli in 'XY':
+                    st.pauli[t], dphase = _mul[tpauli]['X']
+                    phase += dphase
+                    print('phase', phase)
+                if tpauli in 'YZ':
+                    st.pauli[c], dphase = _mul[cpauli]['Z']
+                    phase += dphase
+                    print('phase', phase)
+                assert phase in (-2, 0, 2)
+                if phase != 0:
+                    st.sign = -st.sign
+                    print('phase', phase)
+                print('CX after', st)
         return ctx
 
-    @staticmethod
-    def _mult_pauli(lhs, rhs):
-        return[gk_mult_dict[l][r] for l, r in zip(lhs, rhs)]
 
     @staticmethod
     def _meas_all_comm(idx, stabilizers):
         n_qubits = len(stabilizers)
         op = GottesmanKnillBackend._make_z_stabilizer(idx, n_qubits).pauli
-        mul = GottesmanKnillBackend._mult_pauli
 
         def check(sts):
             try:
@@ -186,8 +207,7 @@ class GottesmanKnillBackend(Backend):
         def trans(sts, xs):
             if xs:
                 for st in xs[1:]:
-                    st.pauli = mul(st.pauli, xs[0].pauli)
-                    st.sign *= xs[0].sign
+                    st.pauli *= xs[0]
                 sts.remove(xs[0])
 
         chk = check(stabilizers)
@@ -213,9 +233,11 @@ class GottesmanKnillBackend(Backend):
     @staticmethod
     def _meas_partial_noncomm(idx, noncomms):
         n_qubits = len(noncomms[0].pauli)
-        mul = GottesmanKnillBackend._mult_pauli
         for st in noncomms[1:]:
-            st.pauli = mul(st.pauli, noncomms[0].pauli)
+            # TODO: sign?
+            pauli = (st * noncomms[0]).pauli
+            st.pauli = pauli
+            
         noncomms[0].pauli = GottesmanKnillBackend._make_z_stabilizer(idx, n_qubits).pauli
         r = random.random()
         if r < 0.5:
