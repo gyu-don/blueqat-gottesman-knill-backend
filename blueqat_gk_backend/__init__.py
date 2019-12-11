@@ -176,7 +176,7 @@ class GottesmanKnillBackend(Backend):
                 cpauli = st.pauli[c]
                 tpauli = st.pauli[t]
                 if cpauli in 'XY':
-                    st.pauli[t], dphase = _mul[tpauli]['X']
+                    st.pauli[t], dphase = _mul['X'][tpauli]
                     phase += dphase
                 if tpauli in 'YZ':
                     st.pauli[c], dphase = _mul[cpauli]['Z']
