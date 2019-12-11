@@ -69,9 +69,9 @@ class Stabilizer:
     sign: int
 
     def __mul_pauli_and_phase(self, other):
-        pauli = [_mul[lc][rc][0] for lc, rc in zip(self, other)]
+        pauli = [_mul[lc][rc][0] for lc, rc in zip(self.pauli, other.pauli)]
         sign = self.sign * other.sign
-        phase = sum(_mul[lc][rc][1] for lc, rc in zip(self, other))
+        phase = sum(_mul[lc][rc][1] for lc, rc in zip(self.pauli, other.pauli))
         assert phase in (-2, 0, 2)
         if phase != 0:
             sign = -sign
@@ -202,7 +202,7 @@ class GottesmanKnillBackend(Backend):
         def trans(sts, xs):
             if xs:
                 for st in xs[1:]:
-                    st.pauli *= xs[0]
+                    st *= xs[0]
                 sts.remove(xs[0])
 
         chk = check(stabilizers)
