@@ -229,9 +229,7 @@ class GottesmanKnillBackend(Backend):
     def _meas_partial_noncomm(idx, noncomms):
         n_qubits = len(noncomms[0].pauli)
         for st in noncomms[1:]:
-            # TODO: sign?
-            pauli = (st * noncomms[0]).pauli
-            st.pauli = pauli
+            st *= noncomms[0]
             
         noncomms[0].pauli = GottesmanKnillBackend._make_z_stabilizer(idx, n_qubits).pauli
         r = random.random()
