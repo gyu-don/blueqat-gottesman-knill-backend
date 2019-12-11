@@ -175,20 +175,15 @@ class GottesmanKnillBackend(Backend):
                 phase = 0
                 cpauli = st.pauli[c]
                 tpauli = st.pauli[t]
-                print('CX before', st)
                 if cpauli in 'XY':
                     st.pauli[t], dphase = _mul[tpauli]['X']
                     phase += dphase
-                    print('phase', phase)
                 if tpauli in 'YZ':
                     st.pauli[c], dphase = _mul[cpauli]['Z']
                     phase += dphase
-                    print('phase', phase)
                 assert phase in (-2, 0, 2)
                 if phase != 0:
                     st.sign = -st.sign
-                    print('phase', phase)
-                print('CX after', st)
         return ctx
 
 
